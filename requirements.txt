@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+watchdog
+chromadb
+torch
+transformers
+openai
+pydantic
+pydantic-settings
+numpy
+httpx
+pymupdf
+python-dotenv
