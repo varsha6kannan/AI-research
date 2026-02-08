@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 PMID_RE = re.compile(r"\bPMID\s*:\s*(\d+)\b", re.IGNORECASE)
@@ -32,11 +35,32 @@ def _extract_pmid(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _text_from_section_list(sections: list[dict] | None) -> str:
+    """Extract and join 'text' fields from a list of section dicts (e.g. abstract, body_text)."""
+    if not sections:
+        return ""
+    parts: list[str] = []
+    for item in sections:
+        if isinstance(item, dict) and "text" in item:
+            t = item.get("text")
+            if t is not None and str(t).strip():
+                parts.append(str(t).strip())
+    return "\n\n".join(parts)
+
+
 def _load_json(path: Path) -> list[LoadedDoc]:
     obj = json.loads(path.read_text(encoding="utf-8"))
-    title = str(obj.get("title") or "Untitled")
-    content = str(obj.get("content") or "")
-    pmid = obj.get("pmid")
+    # Support nested metadata.title (e.g. CORD-19 / paper_id style) or top-level title
+    metadata = obj.get("metadata") or {}
+    title = str(metadata.get("title") or obj.get("title") or "Untitled")
+    logger.info("Loaded title: %s", title)
+    # Top-level content string, or build from abstract + body_text
+    content = str(obj.get("content") or "").strip()
+    if not content:
+        abstract_text = _text_from_section_list(obj.get("abstract"))
+        body_text = _text_from_section_list(obj.get("body_text"))
+        content = "\n\n".join(filter(None, [abstract_text, body_text]))
+    pmid = obj.get("pmid") or metadata.get("pmid")
     pmid = str(pmid) if pmid is not None and str(pmid).strip() else None
     if not content.strip():
         return []
@@ -51,6 +75,7 @@ def _load_jsonl(path: Path) -> list[LoadedDoc]:
             continue
         obj = json.loads(s)
         title = str(obj.get("title") or "Untitled")
+        logger.info("Loaded title: %s", title)
         content = str(obj.get("content") or "")
         pmid = obj.get("pmid")
         pmid = str(pmid) if pmid is not None and str(pmid).strip() else None
