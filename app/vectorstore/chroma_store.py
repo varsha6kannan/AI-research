@@ -39,6 +39,45 @@ def upsert_chunks(
     col.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
 
 
+# Page size when fetching existing chunks by source_path (Chroma may cap results).
+_CHUNK_GET_PAGE_SIZE = 1000
+
+
+def get_chunk_ids_and_hashes_by_source_path(source_path: str) -> dict[str, str]:
+    """
+    Load existing chunk ids and their chunk_hash metadata for a file.
+    Uses pagination so all chunks are retrieved even if they exceed default page size.
+    Rows missing chunk_hash (legacy) get "" so the pipeline treats them as changed (re-embed).
+    """
+    col = get_collection()
+    result: dict[str, str] = {}
+    offset = 0
+    while True:
+        page = col.get(
+            where={"source_path": source_path},
+            include=["metadatas"],
+            limit=_CHUNK_GET_PAGE_SIZE,
+            offset=offset,
+        )
+        ids = page.get("ids") or []
+        metadatas = page.get("metadatas") or []
+        for id_, meta in zip(ids, metadatas, strict=False):
+            meta = meta or {}
+            # Missing or empty chunk_hash -> treat as legacy (re-embed)
+            result[id_] = (meta.get("chunk_hash") or "") or ""
+        if len(ids) < _CHUNK_GET_PAGE_SIZE:
+            break
+        offset += len(ids)
+    return result
+
+
+def delete_by_ids(ids: list[str]) -> None:
+    if not ids:
+        return
+    col = get_collection()
+    col.delete(ids=ids)
+
+
 def delete_by_source_path(source_path: str) -> None:
     col = get_collection()
     # Chroma supports server-side delete by metadata filter.

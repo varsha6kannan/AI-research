@@ -62,6 +62,18 @@ Then:
 - `.txt` / `.md`: title from first header/line; `PMID: <digits>` is auto-detected (optional)
 - `.pdf`: text extracted via PyMuPDF
 
+## Testing
+
+From the project root, run the test script (no pytest required):
+
+```bash
+python tests/test_app.py
+```
+
+With pytest installed: `pytest tests/ -v`
+
+Tests cover: config/watch path, document loader, webhook payload, Chroma store, and (if the server is running) `GET /health`.
+
 ## Notes
 
 - First run will download Hugging Face models (MedCPT) and may take a while.

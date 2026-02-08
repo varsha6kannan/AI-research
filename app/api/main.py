@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app.config import settings
+from app.config import PROJECT_ROOT, settings
 from app.watcher.file_watcher import FileWatcher, WatcherConfig
 from app.watcher.webhook import WebhookPayload, post_webhook_payload
 
@@ -33,7 +33,8 @@ async def lifespan(app: FastAPI):
     def on_payload(payload: WebhookPayload) -> None:
         ingest_queue.put_nowait(payload)
 
-    watch_dir = Path(settings.datasets_dir)
+    # Use project-root-relative path so we watch the correct directory regardless of process cwd
+    watch_dir = (PROJECT_ROOT / settings.datasets_dir).resolve()
     watcher = FileWatcher(WatcherConfig(watch_dir=watch_dir), loop)
     watcher.start(on_payload=on_payload)
 
