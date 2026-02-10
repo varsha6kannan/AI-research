@@ -83,3 +83,62 @@ def delete_by_source_path(source_path: str) -> None:
     # Chroma supports server-side delete by metadata filter.
     col.delete(where={"source_path": source_path})
 
+
+def get_all_unique_source_paths() -> list[str]:
+    """
+    Collect all unique source_path values from the chunk collection.
+    Paginates through the collection to support large corpora.
+    """
+    col = get_collection()
+    seen: set[str] = set()
+    offset = 0
+    while True:
+        page = col.get(
+            limit=_CHUNK_GET_PAGE_SIZE,
+            offset=offset,
+            include=["metadatas"],
+        )
+        ids = page.get("ids") or []
+        metadatas = page.get("metadatas") or []
+        for meta in metadatas:
+            if isinstance(meta, dict) and "source_path" in meta:
+                seen.add(meta["source_path"])
+        if len(ids) < _CHUNK_GET_PAGE_SIZE:
+            break
+        offset += len(ids)
+    return sorted(seen)
+
+
+def get_document_view(source_path: str, content_max_chars: int = 2000) -> tuple[str, str] | None:
+    """
+    For a given source_path, return (title, content_snippet) from its chunks.
+    Chunks are ordered by chunk_index; title from first chunk; content_snippet is
+    concatenated chunk texts truncated to content_max_chars.
+    Returns None if no chunks found.
+    """
+    col = get_collection()
+    page = col.get(
+        where={"source_path": source_path},
+        include=["documents", "metadatas"],
+        limit=_CHUNK_GET_PAGE_SIZE,
+    )
+    ids = page.get("ids") or []
+    documents = page.get("documents") or []
+    metadatas = page.get("metadatas") or []
+    if not ids:
+        return None
+    # Sort by chunk_index
+    indexed = []
+    for i, meta in enumerate(metadatas):
+        meta = meta or {}
+        idx = meta.get("chunk_index", 0)
+        if isinstance(idx, (int, float)):
+            indexed.append((int(idx), meta.get("title", ""), documents[i] if i < len(documents) else ""))
+        else:
+            indexed.append((0, meta.get("title", ""), documents[i] if i < len(documents) else ""))
+    indexed.sort(key=lambda x: x[0])
+    title = indexed[0][1] if indexed else ""
+    parts = [t for (_, _, t) in indexed if t]
+    content_snippet = (" ".join(parts))[:content_max_chars] if parts else ""
+    return (title, content_snippet)
+

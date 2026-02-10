@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     sentence_embed_batch_size: int = 32
     embed_batch_size: int = 32
 
+    # Semantic query disambiguation
+    disambiguation_tau_high: float = 0.75
+    disambiguation_tau_low: float = 0.55
+    disambiguation_tau_diversity: float = 0.5
+    intent_index_path: str = "runtime/intent_index.json"
+    intent_cluster_k: int = 5
+    # Confidence-based disambiguation (retrieval scores)
+    low_conf_threshold: float = 0.70
+    ambiguity_margin: float = 0.08
+
 
 settings = Settings()
 

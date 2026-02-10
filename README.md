@@ -55,6 +55,23 @@ Then:
 - Use `POST /query`
 - Drop or edit files inside `datasets/` to trigger ingestion
 
+## Gradio UI
+
+A single-page Gradio interface is available for the RAG assistant. It calls the FastAPI `POST /query` API and handles clarification (disambiguation) by rewriting the question with the selected intent when you click **Continue**.
+
+1. Start the backend first (see **Run** above).
+2. In another terminal, from the project root:
+
+   ```bash
+   python run_gradio.py
+   ```
+
+3. Open the URL shown (default: http://localhost:7860).
+
+You can set `BACKEND_URL` (e.g. `http://localhost:8000`) if the API is not on the same host. The UI shows:
+- **Ask** to send your question; if the backend asks for clarification, choose an option and click **Continue**.
+- **Answer** and **Citations** after a response.
+
 ## Supported document formats
 
 - `.json`: `{ "title": "...", "content": "...", "pmid": "..." }`

@@ -8,6 +8,8 @@ openai
 pydantic
 pydantic-settings
 numpy
+scikit-learn
 httpx
 pymupdf
 python-dotenv
+gradio

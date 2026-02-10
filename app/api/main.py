@@ -124,4 +124,3 @@ async def ingest(req: IngestRequest) -> dict[str, Any]:
         await asyncio.to_thread(handle_payload, payload)
         ingested.append(str(p.resolve()))
     return {"status": "ok", "ingested": ingested}
-
