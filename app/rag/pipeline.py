@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -8,6 +9,7 @@ import numpy as np
 from openai import OpenAI
 
 from app.config import settings
+from app.guardrails.guards import get_input_guard, get_output_guard
 from app.models.medcpt import get_medcpt_cross_encoder, get_medcpt_query_encoder
 from app.rag.intent_index import get_domains_for_titles, get_or_build_intent_index
 from app.rag.prompts import (
@@ -17,6 +19,15 @@ from app.rag.prompts import (
     USER_PROMPT_TEMPLATE,
 )
 from app.vectorstore.chroma_store import get_collection
+
+logger = logging.getLogger(__name__)
+
+# Safe fallback when output guardrails fail
+_GUARDRAILS_OUTPUT_FALLBACK = "The provided documents do not contain information about this topic."
+# Message when input guardrails reject the question
+_GUARDRAILS_INPUT_REJECT = (
+    "Your question could not be processed. Please rephrase or avoid including sensitive or off-topic content."
+)
 
 
 def _parse_llm_json(text: str) -> dict[str, Any]:
@@ -294,11 +305,26 @@ def _run_rag(query: str, top_k: int) -> dict[str, Any]:
     result = _fix_used_citations(result, citation_titles)
     if _response_indicates_no_document_info(result.get("response", "")):
         result["used_citations"] = None  # null in JSON when response says no info in documents
-    # Fallback: empty response + empty citations -> show explicit "no info" message
+    # Fallback: empty response + empty citations -> use generic message (never echo query to avoid PII leak)
     if not (result.get("response") or "").strip() and not result.get("used_citations"):
-        term = _extract_head_concept(query) if _is_definition_query(query) else "your query"
-        result["response"] = f"The provided documents do not contain information about '{term}'."
+        result["response"] = _GUARDRAILS_OUTPUT_FALLBACK
         result["used_citations"] = None
+
+    # --- Output guardrails ---
+    output_guard = get_output_guard()
+    if output_guard is not None:
+        response_text = (result.get("response") or "").strip()
+        try:
+            parsed = output_guard.parse(llm_output=response_text, num_reasks=0)
+            if not getattr(parsed, "validation_passed", True):
+                logger.info("Guardrails output validation failed; returning fallback.")
+                result["response"] = _GUARDRAILS_OUTPUT_FALLBACK
+                result["used_citations"] = []
+        except Exception as e:
+            logger.warning("Guardrails output validation error: %s", e)
+            result["response"] = _GUARDRAILS_OUTPUT_FALLBACK
+            result["used_citations"] = []
+
     return result
 
 
@@ -329,6 +355,22 @@ def _retrieve_top_k_chunks(query: str, top_k: int) -> list[dict[str, Any]]:
 
 
 def answer_question(user_question: str, *, top_k: int) -> dict[str, Any]:
+    # --- Input guardrails (optional) ---
+    input_guard = get_input_guard()
+    if input_guard is not None:
+        try:
+            parsed = input_guard.parse(llm_output=user_question, num_reasks=0)
+            if not getattr(parsed, "validation_passed", True):
+                return {
+                    "response": _GUARDRAILS_INPUT_REJECT,
+                    "used_citations": [],
+                }
+        except Exception as e:
+            logger.warning("Guardrails input validation error: %s", e)
+            return {
+                "response": _GUARDRAILS_INPUT_REJECT,
+                "used_citations": [],
+            }
 
     # --- Retrieval ---
     qenc = get_medcpt_query_encoder()
@@ -391,14 +433,19 @@ def _call_llm(
         {"role": "user", "content": context_content},
     ]
 
-    resp = client.chat.completions.create(
+    stream = client.chat.completions.create(
         model="phi3:latest",  # ✅ NO prefix
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0,
+        stream=True,
     )
 
-    text = resp.choices[0].message.content or "{}"
+    text_parts: list[str] = []
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content is not None:
+            text_parts.append(chunk.choices[0].delta.content)
+    text = "".join(text_parts) or "{}"
     return _parse_llm_json(text)
 
 

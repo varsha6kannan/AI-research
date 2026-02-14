@@ -13,3 +13,4 @@ httpx
 pymupdf
 python-dotenv
 gradio
+guardrails-ai

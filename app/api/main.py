@@ -60,6 +60,14 @@ async def lifespan(app: FastAPI):
 
     app.state.ingest_task = asyncio.create_task(ingest_worker())
 
+    # Preload RAG models at startup so the first /query is fast (no 30s weight loading).
+    def _preload_rag_models() -> None:
+        from app.models.medcpt import get_medcpt_cross_encoder, get_medcpt_query_encoder
+        get_medcpt_query_encoder()
+        get_medcpt_cross_encoder()
+
+    await asyncio.to_thread(_preload_rag_models)
+
     try:
         yield
     finally:

@@ -42,6 +42,10 @@ CHROMA_PERSIST_DIR=chroma_db
 CHROMA_COLLECTION=medical_chunks
 TOP_K=10
 WEBHOOK_URL=
+
+# Guardrails (optional)
+GUARDRAILS_OUTPUT_ENABLED=true
+GUARDRAILS_INPUT_ENABLED=false
 ```
 
 ## Run
@@ -90,6 +94,19 @@ python tests/test_app.py
 With pytest installed: `pytest tests/ -v`
 
 Tests cover: config/watch path, document loader, webhook payload, Chroma store, and (if the server is running) `GET /health`.
+
+## Guardrails
+
+The app uses [Guardrails AI](https://www.guardrailsai.com/) with the **DetectPII** validator to block PII in questions and responses.
+
+1. **Install DetectPII** (requires a Hub token from https://hub.guardrailsai.com/keys):
+   ```bash
+   guardrails configure
+   guardrails hub install hub://guardrails/detect_pii
+   ```
+2. **Input guardrails**: Block questions containing PII (SSN, email, phone, etc.); returns "Your question could not be processed...". Enabled by default (`GUARDRAILS_INPUT_ENABLED=true`).
+3. **Output guardrails**: Replace LLM responses containing PII with a safe fallback. Enabled by default (`GUARDRAILS_OUTPUT_ENABLED=true`).
+4. **Config**: Set `GUARDRAILS_OUTPUT_ENABLED=false` or `GUARDRAILS_INPUT_ENABLED=false` in `.env` to disable.
 
 ## Notes
 

@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     low_conf_threshold: float = 0.70
     ambiguity_margin: float = 0.08
 
+    # Guardrails: validate LLM output (and optionally input) before returning.
+    guardrails_output_enabled: bool = True
+    guardrails_input_enabled: bool = True
+
 
 settings = Settings()
 
